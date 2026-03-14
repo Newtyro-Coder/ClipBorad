@@ -17,10 +17,13 @@ class ClipboardListener(QThread):
 
     def run(self):
         while self.running:
-            text = self.clipboard.text()
-            if text and text != self.last_text:
-                self.last_text = text
-                self.new_item.emit(text)
+            try:
+                text = self.clipboard.text()
+                if text and text != self.last_text:
+                    self.last_text = text
+                    self.new_item.emit(text)
+            except Exception as e:
+                print(f"剪切板读取异常:{e}")
             time.sleep(0.5)  # 轮询间隔
 
     def stop(self):
@@ -73,7 +76,7 @@ class TrayIcon(QSystemTrayIcon):
                 icon_path = candidate
 
         # py2app 打包后的资源目录（或其他 frozen 应用）
-        if icon_path is None and getattr(sys, 'frozen', False):
+        elif getattr(sys, 'frozen', False):
             exe_dir = os.path.dirname(sys.executable)
             res_dir = os.path.join(exe_dir, '..', 'Resources')
             candidate = os.path.join(res_dir, icon_filename)
@@ -81,7 +84,7 @@ class TrayIcon(QSystemTrayIcon):
                 icon_path = candidate
 
         # 开发环境：脚本所在目录
-        if icon_path is None:
+        else:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             candidate = os.path.join(script_dir, icon_filename)
             if os.path.exists(candidate):
@@ -94,10 +97,9 @@ class TrayIcon(QSystemTrayIcon):
             pixmap = QPixmap(16, 16)
             pixmap.fill(Qt.blue)   # 蓝色方块，可根据喜好修改颜色
             icon = QIcon(pixmap)
-
+            
         self.setIcon(icon)
         self.setToolTip("剪贴板历史")
-        
         menu = QMenu()
         show_action = QAction("显示历史", self)
         show_action.triggered.connect(parent.show_history)
@@ -125,6 +127,14 @@ class ClipboardApp(QApplication):
         self.listener = ClipboardListener()
         self.listener.new_item.connect(self.history_window.add_item)
         self.listener.start()
+
+         # 连接退出清理信号
+        self.aboutToQuit.connect(self.cleanup)
+
+    def cleanup(self):
+        if hasattr(self, 'listener'):
+            self.listener.stop()
+            self.listener.wait(1000)  # 等待线程结束（最多1秒）
 
     def show_history(self):
         self.history_window.show()
