@@ -18,7 +18,12 @@ class HistoryWindow(QWidget):
         self.list_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
         layout.addWidget(self.list_widget)
         self.setLayout(layout)
-        self.history_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'history.json')
+
+         # 设置用户数据目录
+        data_dir = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "剪贴板历史")
+        os.makedirs(data_dir, exist_ok=True)
+        self.history_file = os.path.join(data_dir, "history.json")
+        
         self.load_from_file()
 
     def _get_full_text(self,item):
