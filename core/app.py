@@ -1,37 +1,36 @@
-from PyQt5.QtWidgets import QApplication
-from ui.history_window import HistoryWindow
-from ui.tray_icon import TrayIcon
-from core.listener import ClipboardListener
+import time
+from PyQt5.QtCore import QThread, pyqtSignal
+from pynput import keyboard
 
-#管理进程生命周期
-class ClipboardApp(QApplication):
-    def __init__(self, argv):
-        super().__init__(argv)
-        self.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出
+class HotkeyListener(QThread):
+    """全局热键监听器（运行在独立线程）"""
+    activated = pyqtSignal()
 
-        self.history_window = HistoryWindow()
-        self.tray = TrayIcon(self)
-        self.tray.show()
+    def __init__(self, hotkey='<cmd>+<shift>+v'):
+        super().__init__()
+        self.hotkey = hotkey
+        self.listener = None
 
-        # 连接数量变化信号到托盘菜单更新
-        self.history_window.countChanged.connect(self.tray.update_show_action_text)
+    def run(self):
+        def on_activate():
+            print("✅ 热键被触发！")
+            self.activated.emit()  # 通过信号通知主线程
 
-        # 启动监听线程
-        self.listener = ClipboardListener()
-        self.listener.new_item.connect(self.history_window.add_item)
-        self.listener.start()
+        try:
+            print(f"🔄 正在注册热键: {self.hotkey}")
+            self.listener = keyboard.GlobalHotKeys({
+                self.hotkey: on_activate
+            })
+            self.listener.start()  # 非阻塞启动
+            print("✅ 热键监听已启动，等待触发...")
+            # 保持线程运行，直到外部调用 stop()
+            while self.listener.running:
+                time.sleep(0.1)  # 避免 busy loop
+        except Exception as e:
+            print(f"热键监听启动失败: {e}")
 
-         # 连接退出清理信号
-        self.aboutToQuit.connect(self.cleanup)
-
-        # 初始化数量显示（发射一次信号，使托盘菜单显示正确）
-        self.history_window._update_count_display()
-
-    def cleanup(self):
-        if hasattr(self, 'listener'):
+    def stop(self):
+        if self.listener:
+            print("🛑 正在停止热键监听...")
             self.listener.stop()
-            self.listener.wait(1000)  # 等待线程结束（最多1秒）
-
-    def show_history(self):
-        self.history_window.show()
-        self.history_window.raise_()
+            self.wait()  # 等待线程结束
